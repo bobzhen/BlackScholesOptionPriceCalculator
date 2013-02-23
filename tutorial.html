@@ -1,0 +1,2175 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+
+         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+
+<title>Tutorial</title>
+
+<meta name="viewport" content="width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;"/>
+
+<meta name="apple-touch-fullscreen" content="YES" />
+
+<script type="application/x-javascript">
+
+
+
+
+
+(function() {
+
+
+
+var slideSpeed = 20;
+
+var slideInterval = 0;
+
+
+
+var currentPage = null;
+
+var currentDialog = null;
+
+var currentWidth = 0;
+
+var currentHash = location.hash;
+
+var hashPrefix = "#_";
+
+var pageHistory = [];
+
+var newPageCount = 0;
+
+var checkTimer;
+
+var hasOrientationEvent = false;
+
+var portraitVal = "portrait";
+
+var landscapeVal = "landscape";
+
+
+
+// *************************************************************************************************
+
+
+
+window.iui =
+
+{
+
+	animOn: true,	// Slide animation with CSS transition is now enabled by default where supported
+
+
+
+	showPage: function(page, backwards)
+
+	{
+
+		if (page)
+
+		{
+
+			if (currentDialog)
+
+			{
+
+				currentDialog.removeAttribute("selected");
+
+				currentDialog = null;
+
+			}
+
+
+
+			if (hasClass(page, "dialog"))
+
+				showDialog(page);
+
+			else
+
+			{
+
+				var fromPage = currentPage;
+
+				currentPage = page;
+
+
+
+				if (fromPage)
+
+					setTimeout(slidePages, 0, fromPage, page, backwards);
+
+				else
+
+					updatePage(page, fromPage);
+
+			}
+
+		}
+
+	},
+
+
+
+	showPageById: function(pageId)
+
+	{
+
+		var page = $(pageId);
+
+		if (page)
+
+		{
+
+			var index = pageHistory.indexOf(pageId);
+
+			var backwards = index != -1;
+
+			if (backwards)
+
+				pageHistory.splice(index, pageHistory.length);
+
+
+
+			iui.showPage(page, backwards);
+
+		}
+
+	},
+
+
+
+	showPageByHref: function(href, args, method, replace, cb)
+
+	{
+
+		var req = new XMLHttpRequest();
+
+		req.onerror = function()
+
+		{
+
+			if (cb)
+
+				cb(false);
+
+		};
+
+		
+
+		req.onreadystatechange = function()
+
+		{
+
+			if (req.readyState == 4)
+
+			{
+
+				if (replace)
+
+					replaceElementWithSource(replace, req.responseText);
+
+				else
+
+				{
+
+					var frag = document.createElement("div");
+
+					frag.innerHTML = req.responseText;
+
+					iui.insertPages(frag.childNodes);
+
+				}
+
+				if (cb)
+
+					setTimeout(cb, 1000, true);
+
+			}
+
+		};
+
+
+
+		if (args)
+
+		{
+
+			req.open(method || "GET", href, true);
+
+			req.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+			req.setRequestHeader("Content-Length", args.length);
+
+			req.send(args.join("&"));
+
+		}
+
+		else
+
+		{
+
+			req.open(method || "GET", href, true);
+
+			req.send(null);
+
+		}
+
+	},
+
+	
+
+	insertPages: function(nodes)
+
+	{
+
+		var targetPage;
+
+		for (var i = 0; i < nodes.length; ++i)
+
+		{
+
+			var child = nodes[i];
+
+			if (child.nodeType == 1)
+
+			{
+
+				if (!child.id)
+
+					child.id = "__" + (++newPageCount) + "__";
+
+
+
+				var clone = $(child.id);
+
+				if (clone)
+
+					clone.parentNode.replaceChild(child, clone);
+
+				else
+
+					document.body.appendChild(child);
+
+
+
+				if (child.getAttribute("selected") == "true" || !targetPage)
+
+					targetPage = child;
+
+				
+
+				--i;
+
+			}
+
+		}
+
+
+
+		if (targetPage)
+
+			iui.showPage(targetPage);	 
+
+	},
+
+
+
+	getSelectedPage: function()
+
+	{
+
+		for (var child = document.body.firstChild; child; child = child.nextSibling)
+
+		{
+
+			if (child.nodeType == 1 && child.getAttribute("selected") == "true")
+
+				return child;
+
+		}	 
+
+	},
+
+	isNativeUrl: function(href)
+
+	{
+
+		for(var i = 0; i < iui.nativeUrlPatterns.length; i++)
+
+		{
+
+			if(href.match(iui.nativeUrlPatterns[i])) return true;
+
+		}
+
+		return false;
+
+	},
+
+	nativeUrlPatterns: [
+
+		new RegExp("^http:\/\/maps.google.com\/maps\?"),
+
+		new RegExp("^mailto:"),
+
+		new RegExp("^tel:"),
+
+		new RegExp("^http:\/\/www.youtube.com\/watch\\?v="),
+
+		new RegExp("^http:\/\/www.youtube.com\/v\/"),
+
+		new RegExp("^javascript:"),
+
+
+
+	]
+
+};
+
+
+
+// *************************************************************************************************
+
+
+
+addEventListener("load", function(event)
+
+{
+
+	var page = iui.getSelectedPage();
+
+	var locPage = getPageFromLoc();
+
+		
+
+	if (page)
+
+			iui.showPage(page);
+
+	
+
+	if (locPage && (locPage != page))
+
+		iui.showPage(locPage);
+
+	
+
+	setTimeout(preloadImages, 0);
+
+	if (typeof window.onorientationchange == "object")
+
+	{
+
+		window.onorientationchange=orientChangeHandler;
+
+		hasOrientationEvent = true;
+
+		setTimeout(orientChangeHandler, 0);
+
+	}
+
+	setTimeout(checkOrientAndLocation, 0);
+
+	checkTimer = setInterval(checkOrientAndLocation, 300);
+
+}, false);
+
+
+
+addEventListener("unload", function(event)
+
+{
+
+	return;
+
+}, false);
+
+	
+
+addEventListener("click", function(event)
+
+{
+
+	var link = findParent(event.target, "a");
+
+	if (link)
+
+	{
+
+		function unselect() { link.removeAttribute("selected"); }
+
+		
+
+		if (link.href && link.hash && link.hash != "#" && !link.target)
+
+		{
+
+			link.setAttribute("selected", "true");
+
+			iui.showPage($(link.hash.substr(1)));
+
+			setTimeout(unselect, 500);
+
+		}
+
+		else if (link == $("backButton"))
+
+			history.back();
+
+		else if (link.getAttribute("type") == "submit")
+
+		{
+
+			var form = findParent(link, "form");
+
+			if (form.target == "_self")
+
+			{
+
+			    form.submit();
+
+			    return;  // return so we don't preventDefault
+
+			}
+
+			submitForm(form);
+
+		}
+
+		else if (link.getAttribute("type") == "cancel")
+
+			cancelDialog(findParent(link, "form"));
+
+		else if (link.target == "_replace")
+
+		{
+
+			link.setAttribute("selected", "progress");
+
+			iui.showPageByHref(link.href, null, null, link, unselect);
+
+		}
+
+		else if (iui.isNativeUrl(link.href))
+
+		{
+
+			return;
+
+		}
+
+		else if (link.target == "_webapp")
+
+		{
+
+			location.href = link.href;
+
+		}
+
+		else if (!link.target)
+
+		{
+
+			link.setAttribute("selected", "progress");
+
+			iui.showPageByHref(link.href, null, null, null, unselect);
+
+		}
+
+		else
+
+			return;
+
+		
+
+		event.preventDefault();		   
+
+	}
+
+}, true);
+
+
+
+addEventListener("click", function(event)
+
+{
+
+	var div = findParent(event.target, "div");
+
+	if (div && hasClass(div, "toggle"))
+
+	{
+
+		div.setAttribute("toggled", div.getAttribute("toggled") != "true");
+
+		event.preventDefault();		   
+
+	}
+
+}, true);
+
+
+
+function getPageFromLoc()
+
+{
+
+	var page;
+
+	var result = location.hash.match(/#_([^\?_]+)/);
+
+	if (result)
+
+		page = result[1];
+
+	if (page)
+
+		page = $(page);
+
+	return page;
+
+}
+
+
+
+function orientChangeHandler()
+
+{
+
+	var orientation=window.orientation;
+
+	switch(orientation)
+
+	{
+
+	case 0:
+
+		setOrientation(portraitVal);
+
+		break;	
+
+		
+
+	case 90:
+
+	case -90: 
+
+		setOrientation(landscapeVal);
+
+		break;
+
+	}
+
+}
+
+
+
+
+
+function checkOrientAndLocation()
+
+{
+
+	if (!hasOrientationEvent)
+
+	{
+
+	  if (window.innerWidth != currentWidth)
+
+	  {	  
+
+		  currentWidth = window.innerWidth;
+
+		  var orient = currentWidth == 320 ? portraitVal : landscapeVal;
+
+		  setOrientation(orient);
+
+	  }
+
+	}
+
+
+
+	if (location.hash != currentHash)
+
+	{
+
+		var pageId = location.hash.substr(hashPrefix.length);
+
+		iui.showPageById(pageId);
+
+	}
+
+}
+
+
+
+function setOrientation(orient)
+
+{
+
+	document.body.setAttribute("orient", orient);
+
+	setTimeout(scrollTo, 100, 0, 1);
+
+}
+
+
+
+function showDialog(page)
+
+{
+
+	currentDialog = page;
+
+	page.setAttribute("selected", "true");
+
+	
+
+	if (hasClass(page, "dialog") && !page.target)
+
+		showForm(page);
+
+}
+
+
+
+function showForm(form)
+
+{
+
+	form.onsubmit = function(event)
+
+	{
+
+		event.preventDefault();
+
+		submitForm(form);
+
+	};
+
+	
+
+	form.onclick = function(event)
+
+	{
+
+		if (event.target == form && hasClass(form, "dialog"))
+
+			cancelDialog(form);
+
+	};
+
+}
+
+
+
+function cancelDialog(form)
+
+{
+
+	form.removeAttribute("selected");
+
+}
+
+
+
+function updatePage(page, fromPage)
+
+{
+
+	if (!page.id)
+
+		page.id = "__" + (++newPageCount) + "__";
+
+
+
+	location.hash = currentHash = hashPrefix + page.id;
+
+	pageHistory.push(page.id);
+
+
+
+	var pageTitle = $("pageTitle");
+
+	if (page.title)
+
+		pageTitle.innerHTML = page.title;
+
+
+
+	if (page.localName.toLowerCase() == "form" && !page.target)
+
+		showForm(page);
+
+		
+
+	var backButton = $("backButton");
+
+	if (backButton)
+
+	{
+
+		var prevPage = $(pageHistory[pageHistory.length-2]);
+
+		if (prevPage && !page.getAttribute("hideBackButton"))
+
+		{
+
+			backButton.style.display = "inline";
+
+			backButton.innerHTML = prevPage.title ? prevPage.title : "Back";
+
+		}
+
+		else
+
+			backButton.style.display = "none";
+
+	}	 
+
+}
+
+
+
+function slidePages(fromPage, toPage, backwards)
+
+{		 
+
+	var axis = (backwards ? fromPage : toPage).getAttribute("axis");
+
+
+
+	clearInterval(checkTimer);
+
+	
+
+	if (canDoSlideAnim() && axis != 'y')
+
+	{
+
+	  slide2(fromPage, toPage, backwards, slideDone);
+
+	}
+
+	else
+
+	{
+
+	  slide1(fromPage, toPage, backwards, axis, slideDone);
+
+	}
+
+
+
+	function slideDone()
+
+	{
+
+	  if (!hasClass(toPage, "dialog"))
+
+		  fromPage.removeAttribute("selected");
+
+	  checkTimer = setInterval(checkOrientAndLocation, 300);
+
+	  setTimeout(updatePage, 0, toPage, fromPage);
+
+	  fromPage.removeEventListener('webkitTransitionEnd', slideDone, false);
+
+	}
+
+}
+
+
+
+function canDoSlideAnim()
+
+{
+
+  return (iui.animOn) && (typeof WebKitCSSMatrix == "object");
+
+}
+
+
+
+function slide1(fromPage, toPage, backwards, axis, cb)
+
+{
+
+	if (axis == "y")
+
+		(backwards ? fromPage : toPage).style.top = "100%";
+
+	else
+
+		toPage.style.left = "100%";
+
+
+
+	scrollTo(0, 1);
+
+	toPage.setAttribute("selected", "true");
+
+	var percent = 100;
+
+	slide();
+
+	var timer = setInterval(slide, slideInterval);
+
+
+
+	function slide()
+
+	{
+
+		percent -= slideSpeed;
+
+		if (percent <= 0)
+
+		{
+
+			percent = 0;
+
+			clearInterval(timer);
+
+			cb();
+
+		}
+
+	
+
+		if (axis == "y")
+
+		{
+
+			backwards
+
+				? fromPage.style.top = (100-percent) + "%"
+
+				: toPage.style.top = percent + "%";
+
+		}
+
+		else
+
+		{
+
+			fromPage.style.left = (backwards ? (100-percent) : (percent-100)) + "%"; 
+
+			toPage.style.left = (backwards ? -percent : percent) + "%"; 
+
+		}
+
+	}
+
+}
+
+
+
+
+
+function slide2(fromPage, toPage, backwards, cb)
+
+{
+
+	toPage.style.webkitTransitionDuration = '0ms'; // Turn off transitions to set toPage start offset
+
+	// fromStart is always 0% and toEnd is always 0%
+
+	// iPhone won't take % width on toPage
+
+	var toStart = 'translateX(' + (backwards ? '-' : '') + window.innerWidth +	'px)';
+
+	var fromEnd = 'translateX(' + (backwards ? '100%' : '-100%') + ')';
+
+	toPage.style.webkitTransform = toStart;
+
+	toPage.setAttribute("selected", "true");
+
+	toPage.style.webkitTransitionDuration = '';	  // Turn transitions back on
+
+	function startTrans()
+
+	{
+
+		fromPage.style.webkitTransform = fromEnd;
+
+		toPage.style.webkitTransform = 'translateX(0%)'; //toEnd
+
+	}
+
+	fromPage.addEventListener('webkitTransitionEnd', cb, false);
+
+	setTimeout(startTrans, 0);
+
+}
+
+
+
+function preloadImages()
+
+{
+
+	var preloader = document.createElement("div");
+
+	preloader.id = "preloader";
+
+	document.body.appendChild(preloader);
+
+}
+
+
+
+function submitForm(form)
+
+{
+
+	iui.showPageByHref(form.action || "POST", encodeForm(form), form.method);
+
+}
+
+
+
+function encodeForm(form)
+
+{
+
+	function encode(inputs)
+
+	{
+
+		for (var i = 0; i < inputs.length; ++i)
+
+		{
+
+			if (inputs[i].name)
+
+				args.push(inputs[i].name + "=" + escape(inputs[i].value));
+
+		}
+
+	}
+
+
+
+	var args = [];
+
+	encode(form.getElementsByTagName("input"));
+
+	encode(form.getElementsByTagName("textarea"));
+
+	encode(form.getElementsByTagName("select"));
+
+	return args;	
+
+}
+
+
+
+function findParent(node, localName)
+
+{
+
+	while (node && (node.nodeType != 1 || node.localName.toLowerCase() != localName))
+
+		node = node.parentNode;
+
+	return node;
+
+}
+
+
+
+function hasClass(self, name)
+
+{
+
+	var re = new RegExp("(^|\\s)"+name+"($|\\s)");
+
+	return re.exec(self.getAttribute("class")) != null;
+
+}
+
+
+
+function replaceElementWithSource(replace, source)
+
+{
+
+	var page = replace.parentNode;
+
+	var parent = replace;
+
+	while (page.parentNode != document.body)
+
+	{
+
+		page = page.parentNode;
+
+		parent = parent.parentNode;
+
+	}
+
+
+
+	var frag = document.createElement(parent.localName);
+
+	frag.innerHTML = source;
+
+
+
+	page.removeChild(parent);
+
+
+
+	while (frag.firstChild)
+
+		page.appendChild(frag.firstChild);
+
+}
+
+
+
+function $(id) { return document.getElementById(id); }
+
+function ddd() { console.log.apply(console, arguments); }
+
+
+
+})();
+
+
+
+</script>
+
+<style type="text/css">
+
+body {
+
+    margin: 0;
+
+    font-family: Helvetica;
+
+    background: #FFFFFF;
+
+    color: #000000;
+
+    overflow-x: hidden;
+
+    -webkit-user-select: none;
+
+    -webkit-text-size-adjust: none;
+
+}
+
+
+
+body > *:not(.toolbar) {
+
+    display: none;
+
+    position: absolute;
+
+    margin: 0;
+
+    padding: 0;
+
+    left: 0;
+
+    top: 45px;
+
+    width: 100%;
+
+    min-height: 372px;
+
+    -webkit-transition-duration: 300ms;
+
+    -webkit-transition-property: -webkit-transform;
+
+    -webkit-transform: translateX(0%);
+
+}
+
+
+
+body[orient="landscape"] > *:not(.toolbar) {
+
+    min-height: 268px;
+
+}
+
+
+
+body > *[selected="true"] {
+
+    display: block;
+
+}
+
+
+
+a[selected], a:active {
+
+    background-color: #194fdb !important;
+
+    background-image: url(listArrowSel.png), url(selection.png) !important;
+
+    background-repeat: no-repeat, repeat-x;
+
+    background-position: right center, left top;
+
+    color: #FFFFFF !important;
+
+}
+
+
+
+a[selected="progress"] {
+
+    background-image: url(loading.gif), url(selection.png) !important;
+
+}
+
+
+
+/************************************************************************************************/
+
+
+
+body > .toolbar {
+
+    box-sizing: border-box;
+
+    -moz-box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    border-bottom: 1px solid #2d3642;
+
+    border-top: 1px solid #6d84a2;
+
+    padding: 10px;
+
+    height: 45px;
+
+    background: url(toolbar.png) #6d84a2 repeat-x;
+
+}
+
+
+
+.toolbar > h1 {
+
+    position: absolute;
+
+    overflow: hidden;
+
+    left: 50%;
+
+    margin: 1px 0 0 -75px;
+
+    height: 45px;
+
+    font-size: 20px;
+
+    width: 150px;
+
+    font-weight: bold;
+
+    text-shadow: rgba(0, 0, 0, 0.4) 0px -1px 0;
+
+    text-align: center;
+
+    text-overflow: ellipsis;
+
+    white-space: nowrap;
+
+    color: #FFFFFF;
+
+}
+
+
+
+body[orient="landscape"] > .toolbar > h1 {
+
+    margin-left: -125px;
+
+    width: 250px;
+
+}
+
+
+
+.button {
+
+    position: absolute;
+
+    overflow: hidden;
+
+    top: 8px;
+
+    right: 6px;
+
+    margin: 0;
+
+    border-width: 0 5px;
+
+    padding: 0 3px;
+
+    width: auto;
+
+    height: 30px;
+
+    line-height: 30px;
+
+    font-family: inherit;
+
+    font-size: 12px;
+
+    font-weight: bold;
+
+    color: #FFFFFF;
+
+    text-shadow: rgba(0, 0, 0, 0.6) 0px -1px 0;
+
+    text-overflow: ellipsis;
+
+    text-decoration: none;
+
+    white-space: nowrap;
+
+    background: none;
+
+    -webkit-border-image: url(toolButton.png) 0 5 0 5;
+
+}
+
+
+
+.blueButton {
+
+    -webkit-border-image: url(blueButton.png) 0 5 0 5;
+
+    border-width: 0 5px;
+
+}
+
+
+
+.leftButton {
+
+    left: 6px;
+
+    right: auto;
+
+}
+
+
+
+#backButton {
+
+    display: none;
+
+    left: 6px;
+
+    right: auto;
+
+    padding: 0;
+
+    max-width: 55px;
+
+    border-width: 0 8px 0 14px;
+
+    -webkit-border-image: url(backButton.png) 0 8 0 14;
+
+}
+
+
+
+.whiteButton,
+
+.redButton,
+
+.grayButton {
+
+    display: block;
+
+    border-width: 0 12px;
+
+    padding: 10px;
+
+    text-align: center;
+
+    font-size: 20px;
+
+    font-weight: bold;
+
+    text-decoration: inherit;
+
+    color: inherit;
+
+}
+
+
+
+.whiteButton {
+
+    -webkit-border-image: url(whiteButton.png) 0 12 0 12;
+
+    text-shadow: rgba(255, 255, 255, 0.7) 0 1px 0;
+
+}
+
+
+
+.redButton {
+
+    -webkit-border-image: url(redButton.png) 0 12 0 12;
+
+    color:#fff;
+
+    text-shadow: #7a0001 0 -1px 0;
+
+}
+
+
+
+.grayButton {
+
+    -webkit-border-image: url(grayButton.png) 0 12 0 12;
+
+    color: #FFFFFF;
+
+}
+
+
+
+/************************************************************************************************/
+
+
+
+body > ul > li {
+
+    position: relative;
+
+    margin: 0;
+
+    border-bottom: 1px solid #E0E0E0;
+
+    padding: 8px 0 8px 10px;
+
+    font-size: 20px;
+
+    font-weight: bold;
+
+    list-style: none;
+
+}
+
+
+
+body > ul > li.group {
+
+    position: relative;
+
+    top: -1px;
+
+    margin-bottom: -2px;
+
+    border-top: 1px solid #7d7d7d;
+
+    border-bottom: 1px solid #999999;
+
+    padding: 1px 10px;
+
+    background: url(listGroup.png) repeat-x;
+
+    font-size: 17px;
+
+    font-weight: bold;
+
+    text-shadow: rgba(0, 0, 0, 0.4) 0 1px 0;
+
+    color: #FFFFFF;
+
+}
+
+
+
+body > ul > li.group:first-child {
+
+    top: 0;
+
+    border-top: none;
+
+}
+
+
+
+body > ul > li > a {
+
+    display: block;
+
+    margin: -8px 0 -8px -10px;
+
+    padding: 8px 32px 8px 10px;
+
+    text-decoration: none;
+
+    color: inherit;
+
+    background: url(listArrow.png) no-repeat right center;
+
+}
+
+
+
+a[target="_replace"] {
+
+    box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    padding-top: 25px;
+
+    padding-bottom: 25px;
+
+    font-size: 18px;
+
+    color: cornflowerblue;
+
+    background-color: #FFFFFF;
+
+    background-image: none;
+
+}
+
+
+
+/************************************************************************************************/
+
+    
+
+body > .dialog {
+
+    top: 0;
+
+    width: 100%;
+
+    min-height: 417px;
+
+    z-index: 2;
+
+    background: rgba(0, 0, 0, 0.8);
+
+    padding: 0;
+
+    text-align: right;
+
+}
+
+
+
+.dialog > fieldset {
+
+    box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    width: 100%;
+
+    margin: 0;
+
+    border: none;
+
+    border-top: 1px solid #6d84a2;
+
+    padding: 10px 6px;
+
+    background: url(toolbar.png) #7388a5 repeat-x;
+
+}
+
+
+
+.dialog > fieldset > h1 {
+
+    margin: 0 10px 0 10px;
+
+    padding: 0;
+
+    font-size: 20px;
+
+    font-weight: bold;
+
+    color: #FFFFFF;
+
+    text-shadow: rgba(0, 0, 0, 0.4) 0px -1px 0;
+
+    text-align: center;
+
+}
+
+
+
+.dialog > fieldset > label {
+
+    position: absolute;
+
+    margin: 16px 0 0 6px;
+
+    font-size: 14px;
+
+    color: #999999;
+
+}
+
+
+
+input:not(input[type|=radio]):not(input[type|=checkbox]) {
+
+    box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    width: 100%;
+
+    margin: 8px 0 0 0;
+
+    padding: 6px 6px 6px 44px;
+
+    font-size: 16px;
+
+    font-weight: normal;
+
+}
+
+
+
+/************************************************************************************************/
+
+
+
+body > .panel {
+
+    box-sizing: border-box;
+
+    -moz-box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    padding: 10px;
+
+    background: #c8c8c8 url(pinstripes.png);
+
+}
+
+
+
+.panel > fieldset {
+
+    position: relative;
+
+    margin: 0 0 20px 0;
+
+    padding: 0;
+
+    background: #FFFFFF;
+
+    -webkit-border-radius: 10px;
+
+    -moz-border-radius: 10px;
+
+    border: 1px solid #999999;
+
+    text-align: right;
+
+    font-size: 16px;
+
+}
+
+
+
+.row  {
+
+    position: relative;
+
+    min-height: 42px;
+
+    border-bottom: 1px solid #999999;
+
+    -webkit-border-radius: 0;
+
+    text-align: right;
+
+}
+
+
+
+fieldset > .row:last-child {
+
+    border-bottom: none !important;
+
+}
+
+
+
+.row > input:not(input[type|=radio]):not(input[type|=checkbox]) {
+
+    box-sizing: border-box;
+
+    -moz-box-sizing: border-box;
+
+    -webkit-box-sizing: border-box;
+
+    margin: 0;
+
+    border: none;
+
+    padding: 12px 10px 0 110px;
+
+    height: 42px;
+
+    background: none;
+
+}
+
+.row > input[type|=radio], .row > input[type|=checkbox] {
+
+  margin: 7px 7px 0 0;
+
+  height: 25px;
+
+  width: 25px;
+
+}
+
+
+
+.row > label {
+
+    position: absolute;
+
+    margin: 0 0 0 14px;
+
+    line-height: 42px;
+
+    font-weight: bold;
+
+}
+
+
+
+.row > span {
+
+    position: absolute;
+
+    padding: 12px 10px 0 110px;
+
+    margin: 0;
+
+}
+
+
+
+.row > .toggle {
+
+    position: absolute;
+
+    top: 6px;
+
+    right: 6px;
+
+    width: 100px;
+
+    height: 28px;
+
+}
+
+
+
+.toggle {
+
+    border: 1px solid #888888;
+
+    -webkit-border-radius: 6px;
+
+    background: #FFFFFF url(toggle.png) repeat-x;
+
+    font-size: 19px;
+
+    font-weight: bold;
+
+    line-height: 30px;
+
+}
+
+
+
+.toggle[toggled="true"] {
+
+    border: 1px solid #143fae;
+
+    background: #194fdb url(toggleOn.png) repeat-x;
+
+}
+
+
+
+.toggleOn {
+
+    display: none;
+
+    position: absolute;
+
+    width: 60px;
+
+    text-align: center;
+
+    left: 0;
+
+    top: 0;
+
+    color: #FFFFFF;
+
+    text-shadow: rgba(0, 0, 0, 0.4) 0px -1px 0;
+
+}
+
+
+
+.toggleOff {
+
+    position: absolute;
+
+    width: 60px;
+
+    text-align: center;
+
+    right: 0;
+
+    top: 0;
+
+    color: #666666;
+
+}
+
+
+
+.toggle[toggled="true"] > .toggleOn {
+
+    display: block;
+
+}
+
+
+
+.toggle[toggled="true"] > .toggleOff {
+
+    display: none;
+
+}
+
+
+
+.thumb {
+
+    position: absolute;
+
+    top: -1px;
+
+    left: -1px;
+
+    width: 40px;
+
+    height: 28px;    
+
+    border: 1px solid #888888;
+
+    -webkit-border-radius: 6px;
+
+    background: #ffffff url(thumb.png) repeat-x;
+
+}
+
+
+
+.toggle[toggled="true"] > .thumb {
+
+    left: auto;
+
+    right: -1px;
+
+}
+
+
+
+.panel > h2 {
+
+    margin: 0 0 8px 14px;
+
+    font-size: inherit;
+
+    font-weight: bold;
+
+    color: #4d4d70;
+
+    text-shadow: rgba(255, 255, 255, 0.75) 2px 2px 0;
+
+}
+
+
+
+/************************************************************************************************/
+
+
+
+#preloader {
+
+    display: none;
+
+    background-image: url(loading.gif), url(selection.png),
+
+        url(blueButton.png), url(listArrowSel.png), url(listGroup.png);
+
+}
+
+
+
+h2 {
+
+    margin: 10px;
+
+    color: #6d84a2;
+
+}
+
+
+
+p {
+
+    margin: 10px;
+
+}
+
+.STYLE1 {font-family: Arial, Helvetica, sans-serif}
+
+.STYLE3 {font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+.STYLE4 {font-family: Arial, Helvetica, sans-serif; font-style: italic; }
+</style>
+
+</head>
+
+<body>
+
+<div class="toolbar">
+
+  <h1 id="pageTitle"></h1>
+
+  <a id="backButton" class="button" href="#"></a> 
+
+</div>
+
+<ul id="home" title="Help" selected="true">
+
+  <li><a href="#aboutthissoftware">About This Software</a></li>
+
+  <li><a href="#option">What is an Option</a></li>
+
+  <li><a href="#blackschole">What's Black-Scholes Model</a></li>
+
+  <li><a href="#calloption">Call Options</a></li>
+
+  <li><a href="#putoption">Put Option</a></li>
+
+  <li><a href="#underlyingprice"><span class="STYLE1">Underlying</span> Price</a></li>
+
+  <li><a href="#exerciseprice">Strike Price</a></li>
+
+  <li><a href="#interest">Interest Rate</a></li>
+
+  <li><a href="#dividendyield">Dividend Yield</a></li>
+
+  <li><a href="#volatility">Volatility</a></li>
+
+  <li><a href="#thegreek">The Greeks</a></li>
+
+  <li><a href="#reference">Reference</a></li>
+</ul>
+
+<div id="aboutthissoftware" title="About">
+
+  <h2 align="center">About This Software</h2>
+
+  <p class="STYLE1">The European Style option price are calculated using the Black-Scholes Model.</p>
+
+  <p><img src="about01.gif" alt="" width="300" height="300" /></p>
+
+  <p class="STYLE3">ABOUT OPTION PRICING MODELS</p>
+
+  <p class="STYLE1">In 1973, three mathematicians:<em>Fischer Black</em>,<em> Myron Scholes</em>, and <em>Robert Merton</em> published their formula, known as the Black-Scholes model, for calculating the premium of an option, accounting for the variety of factors that affect premium. It is important to know the variables that go into the formula:</p>
+
+  <p class="STYLE1">1.Underlying Stock Price<br>
+
+    2.Options Strike Price<br>
+
+    3.Time Until Expiration<br>
+
+    4.Implied Volatility<br>
+
+    5.Dividend Status<br>
+
+    6.Interest Rates</p>
+
+  <p class="STYLE1">The Black-Scholes formula, though perhaps the best known, is not the only method for computing the theoretical value of an option, the other option pricing models like?the Cox, Ross and Rubinstein Binomial model, but they are all based on the same theoretical foundations and assumptions such as the geometric Brownian motion theory of stock price behaviour and risk-neutral valuation. American Style equity options are typically priced using a bi-nomial model due to the early exercise feature. Inputs to any pricing model can be tweaked, or manually adjusted, to illustrate the impact of stock movement, volatility changes, or other factors that may influence the actual value of an option. For example, you could adjust the quantities of a potential spread to see how that change would affect the delta, gamma, and other Greeks.</p>
+
+  <p class="STYLE1"> The main advantage of the Black-Scholes model is speed -- it lets you calculate a very large number of option prices in a very short time. </p>
+
+  <p class="STYLE1"> The Black-Scholes model has one major limitation: it cannot be used to accurately price options with an American-style exercise as it only calculates the option price at one point in time -- at expiration. It does not consider the steps along the way where there could be the possibility of early exercise of an American option. </p>
+
+  <p>As all exchange traded equity options have American-style exercise (ie they can be exericed at any time as opposed to European options which can only be exercised at expiration) this is a significant limitation.</p>
+
+  <p>The exception to this is an American call on a non-dividend paying asset. In this case the call is always worth the same as its European equivalent as there is never any advantage in exercising early.</p>
+
+  <p>Various adjustments are sometimes made to the Black-Scholes price to enable it to approximate American option prices (eg the Fischer Black Pseudo-American method) but these only work well within certain limits and they don't really work well for puts.</p>
+  
+  <p class="STYLE1">&nbsp;</p>
+	
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="option" title="What is an Option">
+	<h2 align="center">What is an Option?</h2>
+	<p align="center"><img src="option.jpg" alt="" width="262" height="192" /></p>
+	<p>First the basics: there are two basic types of options, CALLS and PUTS.</p>
+	<p>A<em>CALL</em> is the right, but not the obligation, to<em>buy</em>a security at a specified price for a predetermined period of time.</p>
+	<p>A<em>PUT</em> is the right, but not the obligation, to<em>sell</em>a security at a specified price for a predetermined period of time.</p>
+	<p>Calls and puts are contracts between a buyer and a seller. The buyer of the option has the right, but not the obligation to take delivery of an underlying asset. The option buyer is also called the<em>holder</em>.</p>
+	<p>The seller of the option has the obligation to deliver the underlying asset. The seller has written the contract to deliver the underlying asset and is referred to as the<em>writer</em>.</p>
+	<p>Options can be American style or European style, chooser options, employee stock options, options on stocks, indexes, futures, or have a myriad of other twists. We'll keep this discussion simple by limiting it to CALL options on stocks.</p>
+	<p>Let's start with an example, Apple Computers stock (AAPL) is trading at $51 and you feel strongly AAPL will rise in price. You could buy 1000 shares for $51,000. If your predictions are right you will profit, but if you're wrong, you stand to lose $1,000 for each point the stock drops. Although your gains are potentially unlimited, you can potentially lose the entire $51,000.</p>
+	<p>What if you could reap the benefits of AAPL moving up without incurring the risk of loss if the stock goes down? If you purchase the right to buy the stock at a specified price, say $50, you would still profit if the stock price rises. If the stock rises to $60 before the option expires, your option would be worth at least $10, (your option gives you the right to buy the stock at $50 and you could immediately sell the stock for $60). If the stock goes down in price you would not be obligated to buy the stock, therefore you would not suffer the loss, your option simply expires worthless. Sounds great, but there's one catch - the option is not free. The amount paid for an option is called the <em>premium</em>. The premium paid for the option is the most the option buyer can lose, therefore the risk is limited. The probability that some or all of the premium will be lost is relatively high, so the risk factor is high.</p>
+	<p>The seller of the option has taken on a much larger risk. If the stock rises in price the option seller is obligated to deliver the stock at $50. If the stock goes to $60 the option holder will exercise the rights, and the option seller must sell the $60 stock for $50, losing $10 a share. There is no limit to the option seller's risk.</p>
+	<p>Which trader, the writer or the holder, has a better chance of profiting from the trade? The answer is neither, the option should be priced such that the option seller receives enough premium to offset the risk of the stock rising above the current price.</p>
+	<p>
+    <a href=#home>Back</a> 
+	</p>
+	<p class="STYLE1">&nbsp;</p>
+</div>
+
+<div id="blackschole" title="Black Scholes Model">
+
+  <h2 align="center">What's Black-Scholes Model?</h2>
+
+  <p class="STYLE1">The Black-Scholes model is used to calculate a theoretical call price (ignoring dividends paid during the life of the option) using the five key determinants of an option's price: stock price, strike price, volatility, time to expiration, and short-term (risk free) interest rate.</p>
+
+  <p class="STYLE1">The original formula for calculating the theoretical option price (OP) is as follows:</p>
+
+  <p class="STYLE1"><img src="BlackScholes01.png" alt="" width="317" height="25" /></p>
+
+  <p class="STYLE1">Where:</p>
+
+  <p class="STYLE1"><img src="BlackScholes02.png" alt="" width="247" height="53" /></p>
+
+  <p class="STYLE1"><img src="BlackScholes03.png" alt="" width="248" height="53" /></p>
+
+  <p class="STYLE1">Also:</p>
+
+  <p class="STYLE1"><img src="BlackScholes04.png" alt="" width="161" height="22" /></p>
+
+  <p class="STYLE1">The variables are:</p>
+
+  <p class="STYLE1"><em><strong>S</strong></em> is the stock price<br />
+
+    <strong><em>K</em></strong> is the strike price<br />
+
+    <strong><em>T - t</em></strong> is the time remaining until expiration (or time to maturity)<br />
+
+    <em><strong>r</strong></em> is the current continuously compounded risk-free interest rate<br/>
+
+    <em><strong>&sigma;</strong></em> is the annual volatility of stock price (the standard deviation of the short-term returns over one year).<br />
+
+    <em><strong>ln</strong></em> the natural logarithm<br />
+
+    <em><strong>N(x)</strong></em> is the cumulative distribution function of the  standard normal distribution<br />
+
+    <em><strong>e</strong></em> is the exponential function</p>
+	<p>
+    <a href=#home>Back</a> 
+	</p>
+</div>
+
+<div id="calloption" title="Call Option">
+
+  <h2 align="center">Call Options</h2>
+
+  <p class="STYLE1"> A <strong>Call Option</strong>, often simply labeled a &quot;call&quot;, is a financial contract between two parties, the buyer and the seller of this type of &quot;option&quot;. </p>
+  <p>An investor typically 'buys a call' when he expects the price of the underlying instrument will go above the call's 'strike price,' hopefully significantly so, before the call expires. The investor pays a non-refundable premium for the legal right to exercise the call at the strike price, meaning he can purchase the underlying instrument at the strike price. Typically, if the price of the underlying instrument has surpassed the strike price, the buyer pays the strike price to actually purchase the underlying instrument, and then sells the instrument and pockets the profit. Of course, the investor can also hold onto the underlying instrument, if he feels it will continue to climb even higher.</p>
+  <p>An investor typically 'writes a call' when he expects the price of the underlying instrument to stay below the call's strike price. The writer (seller) receives the premium up front as his or her profit. However, if the call buyer decides to exercise his option to buy, then the writer has the obligation to sell the underlying instrument at the strike price. Oftentimes the writer of the call does not actually own the underlying instrument, and must purchase it on the open market in order to be able to sell it to the buyer of the call. The seller of the call will lose the difference between his or her purchase price of the underlying instrument and the strike price. This risk can be huge if the underlying instrument skyrockets unexpectedly in price.</p>
+  <p><img src="Long call option.png" alt="" width="375" height="245" /></p>
+  <p><em> Payoff from buying a call. </em></p>
+  <p><img src="Short call option.png" alt="" width="375" height="245" /></p>
+  <p><em> Payoff from writing a call. </em></p>
+  <p>(1)  The current price of ABC Corp stock is $45 per share, and investor 'Chris' expects it will go up significantly. Chris buys a call contract for 100 shares of ABC Corp from 'Steve,' who is the call writer/seller. The strike price for the contract is $50 per share, and Chris pays a premium up front of $5 per share, or $500 total. If ABC Corp does not go up, and Chris does not exercise the contract, then Chris has lost $500.  </p>
+  <p>(2)  ABC Corp stock subsequently goes up to $60 per share before the contract is expired. Chris exercises the call option by buying 100 shares of ABC from Steve for a total of $5,000. Chris then sells the stock on the market at market price for a total of $6,000. Chris has paid a $500 contract premium plus a stock cost of $5,000, for a total of $5,500. He has earned back $6,000, yielding a net profit of $500. Steve, however, did not do so well. Steve did not already own ABC Corp stock, so when Chris exercised the contract, Steve had to buy the stock on the open market for $6,000. Steve had already earned the $500 premium for the contract and $5,000 from Chris on selling the stock, so the total loss for Steve was $500.  </p>
+  <p>(3)   If, however, the ABC stock price drops to $40 per share by the time the contract expires, Chris will not exercise the option (i.e., Chris will not buy a stock at $50 per share from Steve when he can buy it on the open market at $40 per share). Chris loses his premium, a total of $500. Steve, however, keeps the premium with no other out-of-pocket expenses, making a profit of $500.  </p>
+  <p>(4)   The break-even stock price for Chris is $55 per share, i.e., the $50 per share for the call option price plus the $5 per share premium he paid for the option. If the stock reaches $55 per share when the option expires, Chris can recover his investment by exercising the option and buying 100 shares of ABC Corp stock from Steve at $50 per share, and then immediately selling those shares at the market price of $55. His total costs are then the $5 per share premium for the call option, plus $50 per share to buy the shares from Steve, for a total of $5,500. His total earnings are $55 per share sold, or $5,500 for 100 shares, yielding him a net $0. (Note that this does not take into account broker fees or other transaction costs.)  </p>
+  <p class="STYLE1">&nbsp;</p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="putoption" title="Put Option">
+
+  <h2 align="center">Put Option</h2>
+
+  <p class="STYLE1"> A<strong>Put</strong>or<strong>Put Option</strong>is a contract between two parties to exchange an asset, the<em>underlying</em>, for a specified amount of cash, the<em>strike</em>, by a predetermined future date, the<em>expiry</em>or<em>maturity</em>. One party, the buyer of the put, has the right, but not an obligation, to sell the asset at the strike price by the future date, while the other party, the seller, has the obligation to buy the asset at the strike price if the buyer exercises the option. </p>
+  <p class="STYLE1"><img src="Long put option.png" alt="" width="375" height="245" /></p>
+  <p class="STYLE4"> Payoff from buying a put. </p>
+  <p class="STYLE4"><img src="Short put option.png" alt="" width="375" height="245" /></p>
+  <p class="STYLE4"> Payoff from writing a put. </p>
+  <p class="STYLE3">Buying a Put:</p>
+  <p class="STYLE1"> A Buyer thinks the price of a stock will decrease. He pays a premium which he will never get back, unless it is sold before it expires. The buyer has the right to sell the stock at the strike price. </p>
+  <p class="STYLE3">Writing a Put:</p>
+  <p class="STYLE1"> The writer receives a premium from the buyer. If the buyer exercises his option, the writer will buy the stock at the strike price. If the buyer does not exercise his option, the writer's profit is the premium. </p>
+  <p class="STYLE1"> (1) 'Trader A'<strong>(Put Buyer)</strong> purchases a put contract to sell 100 shares of XYZ Corp. to 'Trader B'<strong>(Put Writer)</strong>for $50 per share. The current price is $55 per share, and 'Trader A' pays a premium of $5 per share. If the price of XYZ stock falls to $40 a share right before expiration, then 'Trader A' can exercise the put by buying 100 shares for $4,000 from the stock market, then selling them to 'Trader B' for $5,000.</p>
+  <p class="STYLE1">Trader A's total earnings<strong>(S)</strong>can be calculated at $500. The sale of the 100 shares of stock at a strike price of $50 to 'Trader B' = $5,000<strong>(P)</strong>. The purchase of 100 shares of stock at $40 = $4,000<strong>(Q)</strong>. The put option premium paid to trader B for buying the contract of 100 shares at $5 per share, excluding commissions = $500<strong>(R)</strong>. Thus <strong>S = P - (Q+R) = $5,000 - ($4,000+$500) = $500</strong>.</p>
+  <p class="STYLE1"> (2) If, however, the share price never drops below the strike price (in this case, $50), then 'Trader A' would not exercise the option (because selling a stock to 'Trader B' at $50 would cost 'Trader A' more than that to buy it). Trader A's option would be worthless and he would have lost the whole investment, the fee (premium) for the option contract, $500 (5 per share, 100 shares per contract). Trader A's total loss are limited to the cost of the put premium plus the sales commission to buy it.  </p>
+  <p class="STYLE1"> A put option is said to have intrinsic value when the underlying instrument has a stock price(<strong>S</strong>)<em>below</em>the option's strike price (<strong>K</strong>). Upon exercise, a put option is valued at K-S if it is &quot;in-the-money&quot;, otherwise its value is zero. Prior to exercise, an option has time value apart from its intrinsic value. The following factors reduce the time value of a put option: shortening of the time to expire, decrease in the volatility of the underlying, and increase of interest rates. </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="volatility" title="Volatility">
+
+  <h2 align="center">Volatility</h2>
+
+  <p class="STYLE1"><strong>Volatility is Important ! </strong></p>
+
+  <p class="STYLE1">Volatility is the most critical parameter for option pricing -- option prices are very sensitive to changes in volatility. Volatility however cannot be directly observed and must be estimated. </p>
+
+  <p class="STYLE1"><img src="Volatility01.jpg" alt="" width="263" height="192" /></p>
+
+  <p class="STYLE1"> A low volatility stock will stay within a narrow range. A high volatility stock will tend to wander farther, in either direction, from its current price, making its put and call options theoretically more valuable because the stock price is more likely to reach extremes. </p>
+
+  <p class="STYLE1"> The Black-Scholes formula requires as one of its inputs the stock's<em>volatility</em>, the &quot;annualized standard deviation of the underlying stock price's daily logarithmic returns&quot;. </p>
+
+  <p class="STYLE3">Two Different Volatility: Historical Volatility &amp; Implied Volatility</p>
+  <p class="STYLE1">The<em><strong>Historical Volatility (HV)</strong></em> can be   estimated by one or more of high-low, closing, and open prices. All the price data required are available at no charge at sites such as Yahoo.   </p>
+  <p class="STYLE1">Theoretically, the formula to calculat Historical Volatility (i.e. standard deviation of % stock's returns) is as follow:</p>
+  <p class="STYLE1"><img src="Volatility02.gif" alt="" width="407" height="499" /></p>
+  <p class="STYLE1"><img src="Volatility03.gif" alt="" width="395" height="229" /></p>
+  <p class="STYLE1">After the standard deviation is calculated, we then need to annualize it. To annualise the Standard Deviation resulted from formula (1) in order to get Historical Volatility (HV):</p>
+  <p class="STYLE1"><img src="Volatility04.gif" alt="" width="319" height="148" /> </p>
+  <p class="STYLE1"> The<em><strong>implied volatility</strong></em>of an option contract is the volatility implied by the market price of the option based on the Black-Scholes model. In other words, it is the volatility that, when used in the B-S model, yields a theoretical value for the option equal to the current market price of that option. </p>
+  <p class="STYLE1"> This kind of volatility is calculated by the institutions that emit the options and it is not transparent how it is calculated. Of course you can easily calculate Implied Volatility when you already know the option price from the Black-Scholes equation, but given a market price over time, there is no definition.   That's why Implied Volatility is calculated from option prices, not from the price of the underlying.</p>
+  <p class="STYLE1">In Black-Scholes Formula, we can input the current option price, the time to maturity, the stike price, the stock price, the interest rate into the formula, then we get the implied volatility from the formula. </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="underlyingprice" title="Underlying Price">
+
+  <h2 align="center"><span class="STYLE1">Underlying</span> Price</h2>
+
+  <p class="STYLE1"> The price of the underlying instrument is also easy to identify. The last price of an underlying instrument is normally thought a good indication of its price. However, some traders use the relationship of bid and ask prices to the last price to determine the underlying instrument’s price. For example, suppose you are looking at an instrument with a last price of 3204. The bid is 3204, and the ask is 3208. The individual who values the instrument on the last price will use the price of 3204. The individual who values the instrument on the relationship between the last price and the bid and ask prices will use a price of 3206 or 3208. With Aspen Graphics, you can not only use bids, asks, or bid ask mid-points, but a variety of other prices as well. </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="exerciseprice" title="Exercise Price">
+
+  <h2 align="center">Strike Price</h2>
+
+  <p>Option’s<strong>strike price</strong>is fixed and difined for every option. It is the price that will be used if the owner of the option execrises the option.</p>
+  <p><em>The picture below indicate where the strike price is shown in option price table. </em></p>
+  <p><img src="strikeprices01.gif" alt="" width="455" height="385" /></p>
+  <p>For example, you may own a call option on Microsoft stock with the strike price of 20 dollars. This is the characteristic of the option. Whatever happens in the markets, the strike price of this option will always be 20. Microsoft stock can go up to 100 or down to zero, but the strike price of this option you have will always remain at 20 dollars. Strike price is fixed throughout the whole life of an option.</p>
+  <p>If you exercise your Microsoft option, you will buy Microsoft stock for the strike price, i.e. for 20 dollars. Even when the stock would be trading at 100 or at 15 or at 1 dollar, the price for which you buy when you exercise this option is 20 (of course it does not make sense for you to exercise the option if the stock is at 15, as the option would be out of the money, and you better buy the stock in the stock market for 15 rather than for 20 using your option).</p>
+  <p><img src="strikeprices02.gif" alt="" width="481" height="330" /></p>
+  <p class="STYLE1">&nbsp;</p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+<div id="interest" title="Interest Rate">
+  <h2 align="center">Interest Rate</h2>
+  <p class="STYLE1">Higher interest rates lead to higher call prices and lower put prices.</p>
+  <p class="STYLE1"> Interest Rates: It seems counter intuitive that a rise in interest rates would drive up option prices. After all, the buyer of an option has to put up money to purchase the option. This money could otherwise be earning interest. Calls are actually more expensive when interest rates are higher. It is much cheaper to buy a call option than the stock, and the call buyer can invest the remaining capital. Think of term life insurance, buy the option, invest the rest. Put premiums get cheaper as interest rates rise. </p>
+  <p class="STYLE1"><img src="Interest Rates.gif" alt="" width="500" height="240" /></p>
+  <p class="STYLE4"> Option price relative to change in interest rate </p>
+  <p class="STYLE1"> Large changes in interest rates are infrequent. When they do change, their effect on option prices is small compared to other factors. The chart above illustrates the impact of a 10 point swing in interest rates. </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="dividendyield" title="Dividend Yield">
+
+  <h2 align="center">Dividend Yield</h2>
+
+  <p class="STYLE1">If the underlying stock pays a dividend, the CALL will sell at a discount and the PUT will sell at a premium.  </p>
+  <p class="STYLE1"> Dividend Yield: When a stock dividend is paid, the price of the stock is reduced by the amount of the dividend payout. If a call buyer holds the right to buy a stock in the future, and it is known that the underlying stock is going to decline in value, then the option will be discounted by an amount based on when the dividend is paid and the value of the dividend. The chart below shows the relationship of a continuously distributed dividend to the price of a call. </p>
+  <p><img src="dividendyield.gif" alt="" width="500" height="240" /></p>
+  <p class="STYLE4"> Option price relative to change in yield </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="thegreek" title="The Greeks">
+
+  <h2 align="center">The Greeks</h2>
+
+  <p class="STYLE1"><em>The Greeks </em>measure  the sensitivity to change of the option price under a slight change of a single parameter while holding the other parameters fixed. Formally, they are partial derivativrs of the   option price with respect to the independent variables (technically, one Greek, gamma, is a partial derivative of another Greek, called delta).  </p>
+
+  <p>The Greeks are not only important for the mathematical theory of finance, but for those actively involved in trading. Any trader worth his or her salt will know the Greeks and make a choice of which Greeks to hedge to limit exposure. Financial institutions will typically set limits for the Greeks that their trader cannot exceed. Delta is the most important Greek and traders will zero their delta at the end of the day. Gamma and vega are also important but not as closely monitored.</p>
+
+  <p>The Greeks for Black Scholes are given in closed form below. They can be obtained by straightforward differentiation of the Black - Scholes formula.</p>
+
+  <p><img src="TheGreeks.PNG" alt="" width="572" height="353" /></p>
+
+  <p>Note that the gamma and vega formulas are the same for calls and puts. This can be seen directly from put-call parity, that defines a relationship between the price of a European call option and European put option both with the identical strike proce and expiry, and the underlying being a liquid asset. </p>
+
+  <p>In practice, some sensitivities are usually quoted in scaled-down terms, to match the scale of likely changes in the parameters. For example, rho is often reported divided by 10,000 (1bp rate change), vega by 100 (1 vol point change), and theta by 365 or 252 (1 day decay based on either calendar days or trading days per year)</p>
+
+  <p class="STYLE1">&nbsp;</p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+<div id="reference" title="Reference">
+
+  <h2 align="center">Reference</h2>
+
+  <p class="STYLE1">Black-Scholes:   <a href="http://en.wikipedia.org/wiki/Black-Scholes">http://en.wikipedia.org/wiki/Black-Scholes</a> </p>
+
+  <p class="STYLE1">Option Pricing Models and the &quot;Greeks&quot;:   <a href="http://www.hoadley.net/options/bs.htm">http://www.hoadley.net/options/bs.htm</a> </p>
+
+  <p class="STYLE1">Yahoo! Finance:    <a href="http://finance.yahoo.com/">http://finance.yahoo.com</a> </p>
+
+  <p class="STYLE1">Volatility and Black-Scholes:   <a href="http://www.financialwebring.org/">http://www.financialwebring.org/</a> </p>
+
+  <p class="STYLE1"> Hong Kong Exchanges and Clearing Limited:   <a href="http://www.hkex.com.hk/eng/index.htm">http://www.hkex.com.hk/eng/index.htm</a> </p>
+  <p class="STYLE1">Basic Options: <a href="http://www.aspenres.com/Documents/help/userguide/help/bopthelp/bopt2index.html">http://www.aspenres.com/Documents/help/userguide/help/bopthelp/bopt2index.html</a> </p>
+  <p class="STYLE1">Java applet to compare HV and IV:  <a href="http://www.frog-numerics.com/ifs/ifs_LevelA/HistVolaVsVDAX.html">http://www.frog-numerics.com/ifs/ifs_LevelA/HistVolaVsVDAX.html</a> </p>
+  <p>
+    <a href=#home>Back</a> 
+  </p>
+</div>
+
+</body>
+
+</html>
+
